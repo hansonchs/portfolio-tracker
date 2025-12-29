@@ -60,7 +60,31 @@
       "Bash(curl -s -X POST http://localhost:3000/api/settings -H 'Content-Type: application/json' -d '{\"\"positionThreshold\"\": 20}')",
       "Bash(git init)",
       "Bash(git branch -m main)",
-      "Bash(git add .)"
+      "Bash(git add .)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nInitial commit: Portfolio Tracker with cash balance & position alerts\n\nFeatures:\n- Manual position entry for stocks and options\n- Dashboard with real-time price tracking \\(Yahoo Finance\\)\n- Cash balance tracking across multiple broker accounts\n- Position size analysis with configurable alerts\n- Multi-currency support \\(HKD, USD\\)\n- 4-panel chart visualization \\(Market, Asset Type, Account, Top Holdings\\)\n- Collapsible option contract details\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git remote add origin https://github.com/chansoncheung-create/portfolio-tracker.git)",
+      "Bash(git push -u origin main)",
+      "Bash(git config --global credential.helper store)",
+      "Bash(git remote remove origin)",
+      "Bash(git remote set-url origin https://github.com/hansonchs/portfolio-tracker.git)",
+      "Bash(git ls-tree --name-only -r HEAD)",
+      "Bash(git push -u origin main --force)",
+      "Bash(cat .claude/settings.local.json)",
+      "Bash(git status)",
+      "Bash(git log)",
+      "Bash(git diff)",
+      "Bash(git remote -v)",
+      "Bash(git branch -a)",
+      "Bash(git ls-tree *",
+      "Bash(git credential reject *",
+      "Bash(git config *",
+      "Bash(curl *",
+      "Bash(cat *",
+      "Bash(ls *",
+      "Bash(open *",
+      "Bash(python3 -c *",
+      "Bash(git add .claude/settings.local.json)",
+      "Bash(git commit -m \"Add auto-approve permissions for common commands\")"
     ]
   }
 }
