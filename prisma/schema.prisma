@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id           String     @id @default(cuid())
+  name         String     @unique // e.g., "Futu", "WeBull", "Tiger"
+  currency     String     // "HKD" or "USD"
+  cashBalance  Float      @default(0) // Cash balance in account currency
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  positions    Position[]
+}
+
+model Position {
+  id         String   @id @default(cuid())
+  accountId  String
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  ticker     String   // e.g., "AAPL", "00700"
+  type       String   // "stock" or "option"
+  quantity   Float
+  avgCost    Float
+  market     String   // "HK" or "US"
+
+  // Option-specific fields
+  strike     Float?
+  expiry     DateTime?
+  optionType String?  // "call" or "put"
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model PriceCache {
+  id        String   @id @default(cuid())
+  ticker    String   @unique
+  price     Float
+  currency  String   // "HKD" or "USD"
+  updatedAt DateTime @updatedAt
+}
+
+model UserSettings {
+  id                String   @id @default(cuid())
+  positionThreshold Float   @default(20) // Alert threshold % (default 20%)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
