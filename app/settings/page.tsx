@@ -1,31 +1,27 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ArrowLeft, Key, Check, Eye, EyeOff, Loader2, XCircle, CheckCircle, Wallet, AlertTriangle } from "lucide-react"
+import { Select } from "@/components/ui/select"
+import { ArrowLeft, AlertTriangle, Loader2, Check, Plus, Trash2, Target } from "lucide-react"
 
-interface Account {
-  id: string
-  name: string
-  currency: string
-  cashBalance: number
+interface TargetAllocation {
+  ticker: string
+  target: number
+  current?: number
+}
+
+interface PositionData {
+  ticker: string
+  valueHKD: number
+  percent: number
 }
 
 export default function SettingsPage() {
-  const [apiKey, setApiKey] = useState("")
-  const [saved, setSaved] = useState(false)
-  const [showKey, setShowKey] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
-
-  // Cash balance state
-  const [accounts, setAccounts] = useState<Account[]>([])
-  const [loadingAccounts, setLoadingAccounts] = useState(true)
-  const [updatingAccountId, setUpdatingAccountId] = useState<string | null>(null)
-  const [cashBalances, setCashBalances] = useState<Record<string, string>>({})
 
   // Position threshold state
   const [positionThreshold, setPositionThreshold] = useState(20)
@@ -33,74 +29,97 @@ export default function SettingsPage() {
   const [savingThreshold, setSavingThreshold] = useState(false)
   const [thresholdSaved, setThresholdSaved] = useState(false)
 
+  // Target allocations state
+  const [targets, setTargets] = useState<TargetAllocation[]>([])
+  const [newTicker, setNewTicker] = useState("")
+  const [newTarget, setNewTarget] = useState("")
+  const [loadingTargets, setLoadingTargets] = useState(true)
+  const [savingTargets, setSavingTargets] = useState(false)
+  const [targetsSaved, setTargetsSaved] = useState(false)
+  const [currentAllocations, setCurrentAllocations] = useState<PositionData[]>([])
+  const [isCustomTicker, setIsCustomTicker] = useState(false)
+
   useEffect(() => {
-    // Load saved key from localStorage
-    const savedKey = localStorage.getItem("api_key")
-    if (savedKey) {
-      setApiKey(savedKey)
-    }
-
-    // Load accounts and settings
-    fetchAccounts()
     fetchSettings()
+    fetchCurrentAllocations()
   }, [])
-
-  const fetchAccounts = async () => {
-    setLoadingAccounts(true)
-    try {
-      const res = await fetch("/api/accounts")
-      const data = await res.json()
-      setAccounts(data)
-
-      // Initialize cash balances state
-      const initialBalances: Record<string, string> = {}
-      data.forEach((acc: Account) => {
-        initialBalances[acc.id] = acc.cashBalance.toString()
-      })
-      setCashBalances(initialBalances)
-    } catch (error) {
-      console.error("Error fetching accounts:", error)
-    } finally {
-      setLoadingAccounts(false)
-    }
-  }
 
   const fetchSettings = async () => {
     setLoadingThreshold(true)
+    setLoadingTargets(true)
     try {
       const res = await fetch("/api/settings")
       const data = await res.json()
       setPositionThreshold(data.positionThreshold)
+
+      // Parse targetAllocations into array
+      if (data.targetAllocations) {
+        const targetList = Object.entries(data.targetAllocations).map(([ticker, target]) => ({
+          ticker,
+          target: target as number,
+        }))
+        setTargets(targetList)
+      }
     } catch (error) {
       console.error("Error fetching settings:", error)
     } finally {
       setLoadingThreshold(false)
+      setLoadingTargets(false)
     }
   }
 
-  const handleUpdateCashBalance = async (accountId: string) => {
-    const cashBalance = parseFloat(cashBalances[accountId])
-    if (isNaN(cashBalance)) return
-
-    setUpdatingAccountId(accountId)
+  const fetchCurrentAllocations = async () => {
     try {
-      const res = await fetch("/api/accounts", {
-        method: "PUT",
+      const res = await fetch("/api/positions")
+      const positions = await res.json()
+
+      // Get prices for positions
+      const tickers = [...new Set(positions.map((p: any) => p.ticker))]
+      const priceRes = await fetch("/api/prices", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: accountId, cashBalance }),
+        body: JSON.stringify({ tickers }),
+      })
+      const priceData = await priceRes.json()
+      const prices = priceData.prices
+
+      // Group by ticker and calculate values
+      const USD_TO_HKD = 7.8
+      const allocations: Record<string, { valueHKD: number; percent: number }> = {}
+
+      let totalValueHKD = 0
+
+      positions.forEach((pos: any) => {
+        const priceInfo = prices[pos.ticker]
+        const price = priceInfo?.price || pos.avgCost || 0
+        const currency = priceInfo?.currency || pos.account.currency || "USD"
+        const valueHKD = currency === "USD" ? pos.quantity * price * USD_TO_HKD : pos.quantity * price
+
+        if (!allocations[pos.ticker]) {
+          allocations[pos.ticker] = { valueHKD: 0, percent: 0 }
+        }
+        allocations[pos.ticker].valueHKD += valueHKD
+        totalValueHKD += valueHKD
       })
 
-      if (res.ok) {
-        // Update local state
-        setAccounts(accounts.map(acc =>
-          acc.id === accountId ? { ...acc, cashBalance } : acc
-        ))
-      }
+      // Calculate percentages
+      const allocationList = Object.entries(allocations).map(([ticker, data]) => ({
+        ticker,
+        valueHKD: data.valueHKD,
+        percent: totalValueHKD > 0 ? (data.valueHKD / totalValueHKD) * 100 : 0,
+      }))
+
+      setCurrentAllocations(allocationList)
+
+      // Update current values in targets
+      setTargets(prev => prev.map(t => ({
+        ...t,
+        current: allocations[t.ticker]?.percent || 0,
+      })))
+
+      console.log("Current allocations loaded:", allocationList.map(a => `${a.ticker}: ${a.percent.toFixed(1)}%`))
     } catch (error) {
-      console.error("Error updating cash balance:", error)
-      alert("Failed to update cash balance")
-    } finally {
-      setUpdatingAccountId(null)
+      console.error("Error fetching allocations:", error)
     }
   }
 
@@ -119,50 +138,88 @@ export default function SettingsPage() {
       }
     } catch (error) {
       console.error("Error saving threshold:", error)
-      alert("Failed to save threshold")
+      toast.error("Failed to save threshold")
     } finally {
       setSavingThreshold(false)
     }
   }
 
-  const handleSave = () => {
-    localStorage.setItem("api_key", apiKey)
-    setSaved(true)
-    setTestResult(null) // Clear previous test result
-    setTimeout(() => setSaved(false), 2000)
-  }
-
-  const handleClear = () => {
-    setApiKey("")
-    localStorage.removeItem("api_key")
-    setTestResult(null)
-  }
-
-  const handleTest = async () => {
-    if (!apiKey) return
-
-    setTesting(true)
-    setTestResult(null)
-
+  const handleSaveTargets = async () => {
+    setSavingTargets(true)
     try {
-      const res = await fetch("/api/test-key", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey }),
+      // Convert targets array to object
+      const targetObj: Record<string, number> = {}
+      targets.forEach(t => {
+        targetObj[t.ticker] = t.target
       })
 
-      const data = await res.json()
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetAllocations: targetObj }),
+      })
 
       if (res.ok) {
-        setTestResult({ success: true, message: "API key is valid and working!" })
-      } else {
-        setTestResult({ success: false, message: data.error || "Invalid API key" })
+        setTargetsSaved(true)
+        setTimeout(() => setTargetsSaved(false), 2000)
       }
     } catch (error) {
-      setTestResult({ success: false, message: "Failed to connect. Try again." })
+      console.error("Error saving targets:", error)
+      toast.error("Failed to save targets")
     } finally {
-      setTesting(false)
+      setSavingTargets(false)
     }
+  }
+
+  const handleAddTarget = () => {
+    if (!newTicker || !newTarget) return
+
+    let ticker = newTicker.toUpperCase()
+    const target = parseFloat(newTarget)
+
+    if (isNaN(target) || target <= 0 || target > 100) {
+      toast.error("Target must be between 0 and 100")
+      return
+    }
+
+    // Check if ticker already exists
+    if (targets.find(t => t.ticker === ticker)) {
+      toast.error(`Ticker ${ticker} already exists`)
+      return
+    }
+
+    const current = currentAllocations.find(a => a.ticker === ticker)?.percent || 0
+
+    setTargets([...targets, { ticker, target, current }])
+    setNewTicker("")
+    setNewTarget("")
+    setIsCustomTicker(false)
+    toast.success(`Added ${ticker} with target ${target}%`)
+  }
+
+  const handleTickerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value
+    if (value === "__custom__") {
+      setIsCustomTicker(true)
+      setNewTicker("")
+    } else {
+      setIsCustomTicker(false)
+      setNewTicker(value)
+    }
+  }
+
+  const handleRemoveTarget = (ticker: string) => {
+    setTargets(targets.filter(t => t.ticker !== ticker))
+  }
+
+  const handleUpdateTarget = (ticker: string, newTarget: number) => {
+    setTargets(targets.map(t =>
+      t.ticker === ticker ? { ...t, target: newTarget } : t
+    ))
+  }
+
+  const getTotalTarget = () => {
+    return targets.reduce((sum, t) => sum + t.target, 0)
   }
 
   return (
@@ -173,174 +230,6 @@ export default function SettingsPage() {
         </a>
         <h2 className="text-3xl font-bold">Settings</h2>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Key className="h-5 w-5" />
-            OpenRouter API Key
-          </CardTitle>
-          <CardDescription>
-            Add your OpenRouter API key to enable screenshot OCR for automatic position extraction
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="apiKey">API Key</Label>
-            <div className="mt-2 flex gap-2">
-              <div className="relative flex-1">
-                <Input
-                  id="apiKey"
-                  type={showKey ? "text" : "password"}
-                  placeholder="sk-..."
-                  value={apiKey}
-                  onChange={(e) => {
-                    setApiKey(e.target.value)
-                    setTestResult(null)
-                  }}
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKey(!showKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              <Button onClick={handleSave} disabled={!apiKey || saved}>
-                {saved ? (
-                  <>
-                    <Check className="h-4 w-4 mr-2" />
-                    Saved
-                  </>
-                ) : (
-                  "Save"
-                )}
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Your key is stored locally in your browser and never sent to any server except OpenAI.
-            </p>
-          </div>
-
-          {apiKey && (
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleTest} disabled={testing || !apiKey}>
-                {testing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Testing...
-                  </>
-                ) : (
-                  "Test Key"
-                )}
-              </Button>
-              <Button variant="ghost" onClick={handleClear}>
-                Clear Key
-              </Button>
-            </div>
-          )}
-
-          {testResult && (
-            <div
-              className={`flex items-center gap-2 p-3 rounded-lg ${
-                testResult.success
-                  ? "bg-green-50 text-green-700 border border-green-200"
-                  : "bg-red-50 text-red-700 border border-red-200"
-              }`}
-            >
-              {testResult.success ? (
-                <CheckCircle className="h-5 w-5 flex-shrink-0" />
-              ) : (
-                <XCircle className="h-5 w-5 flex-shrink-0" />
-              )}
-              <span className="text-sm">{testResult.message}</span>
-            </div>
-          )}
-
-          <div className="border-t pt-4">
-            <p className="text-sm text-muted-foreground">
-              Don't have an API key? Get one at{" "}
-              <a
-                href="https://openrouter.ai/keys"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-500 hover:underline"
-              >
-                openrouter.ai
-              </a>
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Cash Balance Management */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Wallet className="h-5 w-5" />
-            Cash Balance Management
-          </CardTitle>
-          <CardDescription>
-            Manage cash balances for each broker account
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {loadingAccounts ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : accounts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No accounts found. Create an account first.</p>
-          ) : (
-            <div className="space-y-4">
-              {accounts.map((account) => (
-                <div key={account.id} className="flex items-center gap-4 p-4 border rounded-lg">
-                  <div className="flex-1">
-                    <Label htmlFor={`cash-${account.id}`} className="text-base">
-                      {account.name} ({account.currency})
-                    </Label>
-                    <div className="mt-2 flex gap-2">
-                      <Input
-                        id={`cash-${account.id}`}
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={cashBalances[account.id] || ""}
-                        onChange={(e) =>
-                          setCashBalances((prev) => ({ ...prev, [account.id]: e.target.value }))
-                        }
-                        className="max-w-xs"
-                      />
-                      <Button
-                        onClick={() => handleUpdateCashBalance(account.id)}
-                        disabled={
-                          updatingAccountId === account.id ||
-                          !cashBalances[account.id] ||
-                          parseFloat(cashBalances[account.id]) === account.cashBalance
-                        }
-                      >
-                        {updatingAccountId === account.id ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Updating...
-                          </>
-                        ) : (
-                          "Update"
-                        )}
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Current: {account.cashBalance.toFixed(2)} {account.currency}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       {/* Position Size Alert Threshold */}
       <Card>
@@ -404,6 +293,176 @@ export default function SettingsPage() {
                 </p>
               </div>
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Target Allocation */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Target className="h-5 w-5" />
+            Target Allocation
+          </CardTitle>
+          <CardDescription>
+            Set target percentage for each ticker. Dashboard will show current vs target and rebalancing recommendations.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loadingTargets ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <>
+              {/* Add new target */}
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <Label htmlFor="newTicker">Ticker</Label>
+                  {!isCustomTicker ? (
+                    <Select
+                      id="newTicker"
+                      value={newTicker}
+                      onChange={handleTickerChange}
+                      className="mt-1"
+                    >
+                      <option value="" disabled>Select a ticker...</option>
+                      {currentAllocations
+                        .filter(a => !targets.find(t => t.ticker === a.ticker))
+                        .sort((a, b) => b.valueHKD - a.valueHKD)
+                        .map(a => (
+                          <option key={a.ticker} value={a.ticker}>
+                            {a.ticker} (Current: {a.percent.toFixed(1)}%)
+                          </option>
+                        ))}
+                      {!targets.find(t => t.ticker === "CASH") && (
+                        <option value="CASH">CASH (Cash allocation)</option>
+                      )}
+                      <option value="__custom__">+ Custom ticker...</option>
+                    </Select>
+                  ) : (
+                    <Input
+                      id="newTicker"
+                      placeholder="e.g., BTC or new ticker"
+                      value={newTicker}
+                      onChange={(e) => setNewTicker(e.target.value.toUpperCase())}
+                      className="mt-1"
+                    />
+                  )}
+                </div>
+                <div className="w-24">
+                  <Label htmlFor="newTarget">Target %</Label>
+                  <Input
+                    id="newTarget"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    placeholder="10"
+                    value={newTarget}
+                    onChange={(e) => setNewTarget(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <Button
+                  onClick={handleAddTarget}
+                  disabled={!newTicker || !newTarget}
+                  className="mb-0.5"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add
+                </Button>
+              </div>
+
+              {/* Targets list */}
+              {targets.length > 0 && (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted">
+                      <tr>
+                        <th className="px-4 py-2 text-left">Ticker</th>
+                        <th className="px-4 py-2 text-left">Target %</th>
+                        <th className="px-4 py-2 text-left">Current %</th>
+                        <th className="px-4 py-2 text-left">Diff</th>
+                        <th className="px-4 py-2 w-12"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {targets.map((t) => {
+                        const diff = t.target - (t.current || 0)
+                        return (
+                          <tr key={t.ticker} className="border-t">
+                            <td className="px-4 py-2 font-medium">{t.ticker}</td>
+                            <td className="px-4 py-2">
+                              <Input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.1"
+                                value={t.target}
+                                onChange={(e) => handleUpdateTarget(t.ticker, parseFloat(e.target.value) || 0)}
+                                className="w-20 h-8"
+                              />
+                            </td>
+                            <td className="px-4 py-2">{t.current?.toFixed(1) || 0}%</td>
+                            <td className={`px-4 py-2 ${diff > 0 ? 'text-green-600' : diff < 0 ? 'text-red-600' : ''}`}>
+                              {diff > 0 ? '+' : ''}{diff.toFixed(1)}%
+                            </td>
+                            <td className="px-4 py-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRemoveTarget(t.ticker)}
+                                className="h-8 w-8 p-0"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Total and validation */}
+              <div className={`flex items-center justify-between p-3 rounded-lg ${
+                Math.abs(getTotalTarget() - 100) < 0.1
+                  ? 'bg-green-50 text-green-700 border border-green-200'
+                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+              }`}>
+                <span className="font-medium">
+                  Total Target: {getTotalTarget().toFixed(1)}%
+                </span>
+                {Math.abs(getTotalTarget() - 100) >= 0.1 && (
+                  <span className="text-sm">
+                    ⚠️ Should equal 100%
+                  </span>
+                )}
+              </div>
+
+              {/* Save button */}
+              <Button
+                onClick={handleSaveTargets}
+                disabled={savingTargets || targetsSaved}
+                className="w-full"
+              >
+                {savingTargets ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : targetsSaved ? (
+                  <>
+                    <Check className="h-4 w-4 mr-2" />
+                    Saved
+                  </>
+                ) : (
+                  "Save Targets"
+                )}
+              </Button>
+            </>
           )}
         </CardContent>
       </Card>

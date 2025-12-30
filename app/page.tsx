@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { RefreshCw, TrendingUp, TrendingDown, DollarSign, Wallet, AlertTriangle, LayoutGrid, LayoutList, Square, ChevronDown, ChevronRight } from "lucide-react"
+import { RefreshCw, TrendingUp, TrendingDown, DollarSign, Wallet, AlertTriangle, LayoutGrid, LayoutList, Square, ChevronDown, ChevronRight, TrendingDownIcon, TrendingUpIcon } from "lucide-react"
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, Label } from "recharts"
 
 interface Position {
@@ -48,11 +48,13 @@ export default function HomePage() {
   const [prices, setPrices] = useState<PriceData>({})
   const [accounts, setAccounts] = useState<Account[]>([])
   const [positionThreshold, setPositionThreshold] = useState(20)
+  const [targetAllocations, setTargetAllocations] = useState<{[ticker: string]: number}>({})
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [chartLayout, setChartLayout] = useState<'grid' | 'rows' | 'stack'>('grid')
   const [expandedTickers, setExpandedTickers] = useState<Set<string>>(new Set())
+  const [chartExpandedTickers, setChartExpandedTickers] = useState<Set<string>>(new Set())
 
   // HKD to USD exchange rate (you can make this dynamic later)
   const HKD_TO_USD = 0.128
@@ -68,6 +70,33 @@ export default function HomePage() {
       }
       return newSet
     })
+  }
+
+  const toggleChartExpansion = (ticker: string) => {
+    setChartExpandedTickers(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(ticker)) {
+        newSet.delete(ticker)
+      } else {
+        newSet.add(ticker)
+      }
+      return newSet
+    })
+  }
+
+  // Convert ticker to TradingView symbol format
+  const getTradingViewSymbol = (ticker: string, market: string) => {
+    if (market === "HK") {
+      // HK stocks: check if already 5 digits with leading zero
+      if (ticker.length === 5 && ticker.startsWith('0')) {
+        return `HKEX:${ticker.substring(1)}`
+      }
+      return `HKEX:${ticker}`
+    }
+    // US stocks - add exchange prefix
+    const exchanges = ['NASDAQ', 'NYSE', 'AMEX']
+    // Default to NASDAQ for simplicity, could be enhanced
+    return `NASDAQ:${ticker}`
   }
 
   useEffect(() => {
@@ -122,6 +151,7 @@ export default function HomePage() {
       const res = await fetch("/api/settings")
       const data = await res.json()
       setPositionThreshold(data.positionThreshold)
+      setTargetAllocations(data.targetAllocations || {})
     } catch (error) {
       console.error("Error fetching settings:", error)
     }
@@ -215,6 +245,55 @@ export default function HomePage() {
   const hkPercent = totalValueHKD > 0 ? (hkMarketValue / totalValueHKD) * 100 : 0
   const usPercent = totalValueHKD > 0 ? (usMarketValue / totalValueHKD) * 100 : 0
   const cashPercent = netWorthHKD > 0 ? (totalCashHKD / netWorthHKD) * 100 : 0
+
+  // Calculate rebalancing recommendations
+  const calculateRebalancing = () => {
+    const recommendations = {
+      sell: [] as { ticker: string; amountHKD: number; percent: number }[],
+      buy: [] as { ticker: string; amountHKD: number; percent: number }[],
+    }
+
+    // Calculate current allocation for each ticker with target
+    for (const [ticker, targetPercent] of Object.entries(targetAllocations)) {
+      let currentValueHKD = 0
+      let currentPercent = 0
+
+      if (ticker === "CASH") {
+        // Cash is special - use total cash
+        currentValueHKD = totalCashHKD
+        currentPercent = cashPercent
+      } else {
+        // Find ticker in grouped data
+        const group = tickerGroups.find(g => g.ticker === ticker)
+        if (group) {
+          currentValueHKD = group.totalValue
+          currentPercent = netWorthHKD > 0 ? (currentValueHKD / netWorthHKD) * 100 : 0
+        }
+      }
+
+      const diff = targetPercent - currentPercent
+      const targetValueHKD = (targetPercent / 100) * netWorthHKD
+      const diffValue = targetValueHKD - currentValueHKD
+
+      if (diffValue > 100) { // Only show if difference is significant (> HKD 100)
+        recommendations.buy.push({
+          ticker,
+          amountHKD: diffValue,
+          percent: targetPercent,
+        })
+      } else if (diffValue < -100) {
+        recommendations.sell.push({
+          ticker,
+          amountHKD: Math.abs(diffValue),
+          percent: targetPercent,
+        })
+      }
+    }
+
+    return recommendations
+  }
+
+  const rebalancing = calculateRebalancing()
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -365,6 +444,71 @@ export default function HomePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Rebalancing Recommendations */}
+      {Object.keys(targetAllocations).length > 0 && (rebalancing.sell.length > 0 || rebalancing.buy.length > 0) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Rebalancing Recommendations</CardTitle>
+            <CardDescription>Actions to reach your target allocation</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Sell Section */}
+              {rebalancing.sell.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-sm text-red-600 mb-3 flex items-center gap-2">
+                    <TrendingDown className="h-4 w-4" />
+                    SELL
+                  </h4>
+                  <div className="space-y-2">
+                    {rebalancing.sell.map((item) => (
+                      <div key={item.ticker} className="flex justify-between items-center text-sm p-2 bg-red-50 rounded-lg">
+                        <span className="font-medium">{item.ticker}</span>
+                        <span className="text-red-600">
+                          Sell HKD {item.amountHKD.toLocaleString("zh-HK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          <span className="text-xs text-muted-foreground ml-2">
+                            (to {item.percent}%)
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Buy Section */}
+              {rebalancing.buy.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-sm text-green-600 mb-3 flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4" />
+                    BUY
+                  </h4>
+                  <div className="space-y-2">
+                    {rebalancing.buy.map((item) => (
+                      <div key={item.ticker} className="flex justify-between items-center text-sm p-2 bg-green-50 rounded-lg">
+                        <span className="font-medium">{item.ticker}</span>
+                        <span className="text-green-600">
+                          {item.ticker === "CASH" ? "Add" : "Buy"} HKD {item.amountHKD.toLocaleString("zh-HK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          <span className="text-xs text-muted-foreground ml-2">
+                            (to {item.percent}%)
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            {(rebalancing.sell.length > 0 || rebalancing.buy.length > 0) && (
+              <div className="mt-4 pt-4 border-t text-sm text-muted-foreground">
+                Total to rebalance: HKD {(rebalancing.sell.reduce((sum, item) => sum + item.amountHKD, 0) +
+                  rebalancing.buy.reduce((sum, item) => sum + item.amountHKD, 0)).toLocaleString("zh-HK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Charts Section */}
       <div className={`grid gap-6 ${
@@ -829,6 +973,12 @@ export default function HomePage() {
                   const isOverThreshold = percentOfTotal >= positionThreshold
                   const isNearThreshold = percentOfTotal >= positionThreshold * 0.8 && percentOfTotal < positionThreshold
 
+                  // Calculate target comparison
+                  const targetPercent = targetAllocations[group.ticker]
+                  const targetDiff = targetPercent !== undefined ? targetPercent - percentOfTotal : null
+                  const isOverTarget = targetDiff !== null && targetDiff < -1 // Overweight by > 1%
+                  const isUnderTarget = targetDiff !== null && targetDiff > 1 // Underweight by > 1%
+
                   return (
                     <div key={group.ticker} className={`border rounded-lg ${isOverThreshold ? "border-red-300 bg-red-50/50" : ""}`}>
                       {/* Main ticker row */}
@@ -853,6 +1003,17 @@ export default function HomePage() {
                               <span className="text-xs bg-red-500 text-white px-2 py-1 rounded flex items-center gap-1">
                                 <AlertTriangle className="h-3 w-3" />
                                 Over threshold
+                              </span>
+                            )}
+                            {targetDiff !== null && (
+                              <span className={`text-xs px-2 py-1 rounded ${
+                                isOverTarget
+                                  ? "bg-red-100 text-red-700 border border-red-300"
+                                  : isUnderTarget
+                                  ? "bg-green-100 text-green-700 border border-green-300"
+                                  : "bg-gray-100 text-gray-700 border border-gray-300"
+                              }`}>
+                                Target: {targetPercent}% ({targetDiff > 0 ? '+' : ''}{targetDiff.toFixed(1)}%)
                               </span>
                             )}
                             {/* Asset Type Badge */}
@@ -973,6 +1134,30 @@ export default function HomePage() {
                           )}
                         </div>
                       )}
+
+                      {/* TradingView Chart Link */}
+                      <div className="border-t">
+                        <a
+                          href={`https://www.tradingview.com/chart/?symbol=${getTradingViewSymbol(group.ticker, group.positions[0]?.market || 'US')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors text-left"
+                        >
+                          <span className="text-sm font-medium flex items-center gap-2">
+                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <rect x="3" y="3" width="18" height="18" rx="2" />
+                              <path d="M3 9h18M9 21V9" />
+                            </svg>
+                            TradingView Chart
+                          </span>
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            View on TradingView
+                            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M7 17L17 7M7 7h10m-3 5l5-5" />
+                            </svg>
+                          </span>
+                        </a>
+                      </div>
                     </div>
                   )
                 })}

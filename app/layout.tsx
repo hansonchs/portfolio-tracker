@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import "./globals.css"
+import { Toaster } from "sonner"
 
 export const metadata: Metadata = {
   title: "Portfolio Tracker",
@@ -20,7 +21,6 @@ export default function RootLayout({
               <h1 className="text-2xl font-bold">Portfolio Tracker</h1>
               <div className="flex gap-4">
                 <a href="/" className="text-sm hover:underline">Dashboard</a>
-                <a href="/manual" className="text-sm hover:underline">Manual Entry</a>
                 <a href="/positions" className="text-sm hover:underline">Positions</a>
                 <a href="/settings" className="text-sm hover:underline">Settings</a>
               </div>
@@ -30,6 +30,7 @@ export default function RootLayout({
         <main className="container mx-auto px-4 py-8">
           {children}
         </main>
+        <Toaster richColors position="top-right" />
       </body>
     </html>
   )

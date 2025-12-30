@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,13 +17,14 @@ interface Account {
 
 export default function ManualPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
-  const [formData, setFormData] = useState({
-    accountId: "",
+  const [positionForm, setPositionForm] = useState({
     ticker: "",
     type: "stock",
     quantity: "",
     avgCost: "",
     market: "US",
+    cashCurrency: "HKD",
+    cashAmount: "",
     strike: "",
     expiry: "",
     optionType: "call",
@@ -40,7 +42,7 @@ export default function ManualPage() {
       const data = await res.json()
       setAccounts(data)
       if (data.length > 0) {
-        setFormData((prev) => ({ ...prev, accountId: data[0].id }))
+        setPositionForm((prev) => ({ ...prev, accountId: data[0].id }))
       }
     } catch (error) {
       console.error("Error fetching accounts:", error)
@@ -53,37 +55,74 @@ export default function ManualPage() {
     setSuccess(false)
 
     try {
-      const payload = {
-        accountId: formData.accountId,
-        ticker: formData.ticker.toUpperCase(),
-        type: formData.type,
-        quantity: parseFloat(formData.quantity),
-        avgCost: parseFloat(formData.avgCost),
-        market: formData.market,
-        ...(formData.type === "option" && {
-          strike: parseFloat(formData.strike),
-          expiry: formData.expiry || null,
-          optionType: formData.optionType,
-        }),
-      }
+      if (positionForm.type === "cash") {
+        // Find account with matching currency, or create one
+        let account = accounts.find((acc) => acc.currency === positionForm.cashCurrency)
 
-      const res = await fetch("/api/positions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
+        if (!account) {
+          // Create new account for this currency
+          const createRes = await fetch("/api/accounts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: `${positionForm.cashCurrency} Account`,
+              currency: positionForm.cashCurrency,
+            }),
+          })
+          if (!createRes.ok) {
+            throw new Error("Failed to create account")
+          }
+          account = await createRes.json()
+        }
 
-      if (!res.ok) {
-        throw new Error("Failed to save position")
+        const currentCash = account?.cashBalance || 0
+        const newCashBalance = currentCash + parseFloat(positionForm.cashAmount)
+
+        const res = await fetch("/api/accounts", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: account.id,
+            cashBalance: newCashBalance,
+          }),
+        })
+
+        if (!res.ok) {
+          throw new Error("Failed to update cash balance")
+        }
+      } else {
+        // Create stock/option position
+        const payload = {
+          ticker: positionForm.ticker.toUpperCase(),
+          type: positionForm.type,
+          quantity: parseFloat(positionForm.quantity),
+          avgCost: parseFloat(positionForm.avgCost),
+          market: positionForm.market,
+          ...(positionForm.type === "option" && {
+            strike: parseFloat(positionForm.strike),
+            expiry: positionForm.expiry || null,
+            optionType: positionForm.optionType,
+          }),
+        }
+
+        const res = await fetch("/api/positions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+
+        if (!res.ok) {
+          throw new Error("Failed to save position")
+        }
       }
 
       setSuccess(true)
       setTimeout(() => {
-        window.location.href = "/"
+        window.location.href = "/positions"
       }, 1500)
     } catch (error) {
-      console.error("Error saving position:", error)
-      alert("Failed to save position. Please try again.")
+      console.error("Error:", error)
+      toast.error("Failed to save. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -92,111 +131,129 @@ export default function ManualPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
-        <a href="/" className="text-muted-foreground hover:text-foreground">
+        <a href="/positions" className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-5 w-5" />
         </a>
-        <h2 className="text-3xl font-bold">Manual Entry</h2>
+        <h2 className="text-3xl font-bold">Add Position</h2>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Add Position Manually</CardTitle>
           <CardDescription>
-            Enter position details manually if OCR is not available
+            Add stock, option, or cash position
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Label htmlFor="account">Account</Label>
-              <Select
-                id="account"
-                value={formData.accountId}
-                onChange={(e) => setFormData({ ...formData, accountId: e.target.value })}
-                required
-              >
-                {accounts.length === 0 ? (
-                  <option value="">No accounts available</option>
-                ) : (
-                  accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))
-                )}
-              </Select>
-            </div>
-
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="ticker">Ticker Symbol</Label>
-                <Input
-                  id="ticker"
-                  placeholder="e.g., AAPL or 00700"
-                  value={formData.ticker}
-                  onChange={(e) => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })}
-                  required
-                />
-              </div>
-
               <div>
                 <Label htmlFor="type">Type</Label>
                 <Select
                   id="type"
-                  value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  value={positionForm.type}
+                  onChange={(e) => setPositionForm({ ...positionForm, type: e.target.value })}
                   required
                 >
                   <option value="stock">Stock</option>
                   <option value="option">Option</option>
+                  <option value="cash">Cash</option>
                 </Select>
               </div>
+
+              {positionForm.type === "cash" ? (
+                <>
+                  <div>
+                    <Label htmlFor="cashCurrency">Currency</Label>
+                    <Select
+                      id="cashCurrency"
+                      value={positionForm.cashCurrency}
+                      onChange={(e) => setPositionForm({ ...positionForm, cashCurrency: e.target.value })}
+                      required
+                    >
+                      <option value="HKD">HKD</option>
+                      <option value="USD">USD</option>
+                    </Select>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <Label htmlFor="ticker">Ticker Symbol</Label>
+                  <Input
+                    id="ticker"
+                    placeholder="e.g., AAPL or 00700"
+                    value={positionForm.ticker}
+                    onChange={(e) => setPositionForm({ ...positionForm, ticker: e.target.value.toUpperCase() })}
+                    required
+                  />
+                </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            {positionForm.type === "cash" ? (
               <div>
-                <Label htmlFor="quantity">Quantity</Label>
+                <Label htmlFor="cashAmount">Cash Amount</Label>
                 <Input
-                  id="quantity"
+                  id="cashAmount"
                   type="number"
                   step="any"
-                  placeholder="e.g., 100"
-                  value={formData.quantity}
-                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                  placeholder="e.g., 10000"
+                  value={positionForm.cashAmount}
+                  onChange={(e) => setPositionForm({ ...positionForm, cashAmount: e.target.value })}
                   required
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  This will be added to the selected account's current cash balance.
+                </p>
               </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="quantity">Quantity</Label>
+                    <Input
+                      id="quantity"
+                      type="number"
+                      step="any"
+                      placeholder="e.g., 100"
+                      value={positionForm.quantity}
+                      onChange={(e) => setPositionForm({ ...positionForm, quantity: e.target.value })}
+                      required
+                    />
+                  </div>
 
-              <div>
-                <Label htmlFor="avgCost">
-                  Average Cost {formData.market === "HK" ? "(HKD)" : "(USD)"}
-                </Label>
-                <Input
-                  id="avgCost"
-                  type="number"
-                  step="any"
-                  placeholder={formData.market === "HK" ? "e.g., 400.00" : "e.g., 150.00"}
-                  value={formData.avgCost}
-                  onChange={(e) => setFormData({ ...formData, avgCost: e.target.value })}
-                  required
-                />
-              </div>
-            </div>
+                  <div>
+                    <Label htmlFor="avgCost">
+                      Average Cost {positionForm.market === "HK" ? "(HKD)" : "(USD)"}
+                    </Label>
+                    <Input
+                      id="avgCost"
+                      type="number"
+                      step="any"
+                      placeholder={positionForm.market === "HK" ? "e.g., 400.00" : "e.g., 150.00"}
+                      value={positionForm.avgCost}
+                      onChange={(e) => setPositionForm({ ...positionForm, avgCost: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
 
-            <div>
-              <Label htmlFor="market">Market</Label>
-              <Select
-                id="market"
-                value={formData.market}
-                onChange={(e) => setFormData({ ...formData, market: e.target.value })}
-                required
-              >
-                <option value="US">US Market</option>
-                <option value="HK">Hong Kong Market</option>
-              </Select>
-            </div>
+                <div>
+                  <Label htmlFor="market">Market</Label>
+                  <Select
+                    id="market"
+                    value={positionForm.market}
+                    onChange={(e) => setPositionForm({ ...positionForm, market: e.target.value })}
+                    required
+                  >
+                    <option value="US">US Market</option>
+                    <option value="HK">Hong Kong Market</option>
+                  </Select>
+                </div>
+              </>
+            )}
 
-            {formData.type === "option" && (
+            {positionForm.type === "option" && (
               <div className="space-y-4 border-t pt-4">
                 <p className="text-sm font-medium">Option Details</p>
 
@@ -205,8 +262,8 @@ export default function ManualPage() {
                     <Label htmlFor="optionType">Option Type</Label>
                     <Select
                       id="optionType"
-                      value={formData.optionType}
-                      onChange={(e) => setFormData({ ...formData, optionType: e.target.value })}
+                      value={positionForm.optionType}
+                      onChange={(e) => setPositionForm({ ...positionForm, optionType: e.target.value })}
                       required
                     >
                       <option value="call">Call</option>
@@ -221,9 +278,9 @@ export default function ManualPage() {
                       type="number"
                       step="any"
                       placeholder="e.g., 150"
-                      value={formData.strike}
-                      onChange={(e) => setFormData({ ...formData, strike: e.target.value })}
-                      required={formData.type === "option"}
+                      value={positionForm.strike}
+                      onChange={(e) => setPositionForm({ ...positionForm, strike: e.target.value })}
+                      required
                     />
                   </div>
 
@@ -232,8 +289,8 @@ export default function ManualPage() {
                     <Input
                       id="expiry"
                       type="date"
-                      value={formData.expiry}
-                      onChange={(e) => setFormData({ ...formData, expiry: e.target.value })}
+                      value={positionForm.expiry}
+                      onChange={(e) => setPositionForm({ ...positionForm, expiry: e.target.value })}
                     />
                   </div>
                 </div>

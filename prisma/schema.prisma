@@ -47,6 +47,7 @@ model PriceCache {
 model UserSettings {
   id                String   @id @default(cuid())
   positionThreshold Float   @default(20) // Alert threshold % (default 20%)
+  targetAllocations String   @default("{}") // JSON string of {ticker: target%}
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
