@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
+import { auth } from "@clerk/nextjs/server"
 
 export async function GET() {
   try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     const positions = await prisma.position.findMany({
+      where: { userId },
       include: {
         account: true,
       },
@@ -20,6 +27,11 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     const body = await request.json()
     const { accountId, ticker, type, quantity, avgCost, market, strike, expiry, optionType } = body
 
@@ -31,26 +43,39 @@ export async function POST(request: NextRequest) {
     // Get or create default account if accountId not provided
     let targetAccountId = accountId
     if (!targetAccountId) {
-      // Try to find an existing account named "Portfolio"
-      let defaultAccount = await prisma.account.findUnique({
-        where: { name: "Portfolio" },
+      // Try to find an existing account named "Portfolio" for this user
+      let defaultAccount = await prisma.account.findFirst({
+        where: {
+          userId,
+          name: "Portfolio",
+        },
       })
 
       // If not found, create it
       if (!defaultAccount) {
         defaultAccount = await prisma.account.create({
           data: {
+            userId,
             name: "Portfolio",
             currency: "HKD", // Default to HKD
           },
         })
       }
       targetAccountId = defaultAccount.id
+    } else {
+      // Verify the account belongs to the user
+      const account = await prisma.account.findUnique({
+        where: { id: targetAccountId },
+      })
+      if (!account || account.userId !== userId) {
+        return NextResponse.json({ error: "Invalid account" }, { status: 403 })
+      }
     }
 
     // Create position
     const position = await prisma.position.create({
       data: {
+        userId,
         accountId: targetAccountId,
         ticker: ticker.toUpperCase(),
         type,
@@ -75,11 +100,24 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
 
     if (!id) {
       return NextResponse.json({ error: "Missing id" }, { status: 400 })
+    }
+
+    // Verify the position belongs to the user
+    const position = await prisma.position.findUnique({
+      where: { id },
+    })
+    if (!position || position.userId !== userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 
     await prisma.position.delete({
@@ -95,11 +133,24 @@ export async function DELETE(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     const body = await request.json()
     const { id, ticker, quantity, avgCost } = body
 
     if (!id) {
       return NextResponse.json({ error: "Missing id" }, { status: 400 })
+    }
+
+    // Verify the position belongs to the user
+    const existingPosition = await prisma.position.findUnique({
+      where: { id },
+    })
+    if (!existingPosition || existingPosition.userId !== userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 
     const position = await prisma.position.update({

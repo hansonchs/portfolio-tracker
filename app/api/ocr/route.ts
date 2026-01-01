@@ -107,7 +107,6 @@ IMPORTANT:
       }
       result = JSON.parse(jsonMatch[0])
     } catch (parseError) {
-      console.error("Failed to parse OCR response:", content)
       return NextResponse.json(
         { error: "Failed to parse OCR response", raw: content },
         { status: 500 }
@@ -124,7 +123,6 @@ IMPORTANT:
 
     return NextResponse.json(result)
   } catch (error: any) {
-    console.error("OCR error:", error)
     return NextResponse.json(
       { error: "OCR processing failed", details: error.message },
       { status: 500 }

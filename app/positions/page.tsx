@@ -1,12 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useAuth } from "@clerk/nextjs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Trash2, Edit2, Check, X } from "lucide-react"
+import { ArrowLeft, Trash2, Edit2, Check, X, LogIn } from "lucide-react"
 
 interface Position {
   id: string
@@ -31,6 +32,7 @@ interface Account {
 }
 
 export default function PositionsPage() {
+  const { isLoaded, userId } = useAuth()
   const [positions, setPositions] = useState<Position[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
@@ -131,14 +133,37 @@ export default function PositionsPage() {
           </a>
           <h2 className="text-3xl font-bold">Positions</h2>
         </div>
-        <div className="flex gap-2">
-          <a href="/manual">
-            <Button>Add Position</Button>
-          </a>
-        </div>
+        {userId && (
+          <div className="flex gap-2">
+            <a href="/manual">
+              <Button>Add Position</Button>
+            </a>
+          </div>
+        )}
       </div>
 
-      <Card>
+      {!isLoaded ? (
+        <Card>
+          <CardContent className="flex items-center justify-center py-12">
+            <p className="text-muted-foreground">Loading...</p>
+          </CardContent>
+        </Card>
+      ) : !userId ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
+            <LogIn className="h-12 w-12 text-muted-foreground" />
+            <h3 className="text-xl font-semibold">Sign In Required</h3>
+            <p className="text-muted-foreground text-center">
+              You need to sign in to view and manage your positions.
+            </p>
+            <Button onClick={() => window.location.href = "/sign-in"}>
+              <LogIn className="h-4 w-4 mr-2" />
+              Sign In
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
         <CardHeader>
           <CardTitle>All Positions</CardTitle>
           <CardDescription>
@@ -266,6 +291,7 @@ export default function PositionsPage() {
           )}
         </CardContent>
       </Card>
+      )}
     </div>
   )
 }

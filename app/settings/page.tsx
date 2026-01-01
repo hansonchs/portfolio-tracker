@@ -1,13 +1,14 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useAuth } from "@clerk/nextjs"
 import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
-import { ArrowLeft, AlertTriangle, Loader2, Check, Plus, Trash2, Target } from "lucide-react"
+import { ArrowLeft, AlertTriangle, Loader2, Check, Plus, Trash2, Target, LogIn } from "lucide-react"
 
 interface TargetAllocation {
   ticker: string
@@ -22,6 +23,7 @@ interface PositionData {
 }
 
 export default function SettingsPage() {
+  const { isLoaded, userId } = useAuth()
 
   // Position threshold state
   const [positionThreshold, setPositionThreshold] = useState(20)
@@ -116,8 +118,6 @@ export default function SettingsPage() {
         ...t,
         current: allocations[t.ticker]?.percent || 0,
       })))
-
-      console.log("Current allocations loaded:", allocationList.map(a => `${a.ticker}: ${a.percent.toFixed(1)}%`))
     } catch (error) {
       console.error("Error fetching allocations:", error)
     }
@@ -231,8 +231,30 @@ export default function SettingsPage() {
         <h2 className="text-3xl font-bold">Settings</h2>
       </div>
 
-      {/* Position Size Alert Threshold */}
-      <Card>
+      {!isLoaded ? (
+        <Card>
+          <CardContent className="flex items-center justify-center py-12">
+            <p className="text-muted-foreground">Loading...</p>
+          </CardContent>
+        </Card>
+      ) : !userId ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
+            <LogIn className="h-12 w-12 text-muted-foreground" />
+            <h3 className="text-xl font-semibold">Sign In Required</h3>
+            <p className="text-muted-foreground text-center">
+              You need to sign in to manage your settings.
+            </p>
+            <Button onClick={() => window.location.href = "/sign-in"}>
+              <LogIn className="h-4 w-4 mr-2" />
+              Sign In
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Position Size Alert Threshold */}
+          <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5" />
@@ -466,6 +488,8 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   )
 }

@@ -1,10 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useAuth } from "@clerk/nextjs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { RefreshCw, TrendingUp, TrendingDown, DollarSign, Wallet, AlertTriangle, LayoutGrid, LayoutList, Square, ChevronDown, ChevronRight, TrendingDownIcon, TrendingUpIcon } from "lucide-react"
+import { RefreshCw, TrendingUp, TrendingDown, DollarSign, Wallet, AlertTriangle, LayoutGrid, LayoutList, Square, ChevronDown, ChevronRight, TrendingDownIcon, TrendingUpIcon, LogIn } from "lucide-react"
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, Label } from "recharts"
+import { toast } from "sonner"
 
 interface Position {
   id: string
@@ -44,6 +46,7 @@ interface TickerGroup {
 }
 
 export default function HomePage() {
+  const { isLoaded, userId } = useAuth()
   const [positions, setPositions] = useState<Position[]>([])
   const [prices, setPrices] = useState<PriceData>({})
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -105,14 +108,29 @@ export default function HomePage() {
     fetchSettings()
   }, [])
 
+  // Redirect to landing page if not authenticated
+  useEffect(() => {
+    if (isLoaded && !userId) {
+      window.location.href = "/landing"
+    }
+  }, [isLoaded, userId])
+
   const fetchPositions = async () => {
     try {
       const res = await fetch("/api/positions")
+      if (!res.ok) {
+        setPositions([])
+        if (res.status !== 401) {
+          toast.error("Failed to load positions")
+        }
+        return
+      }
       const data = await res.json()
-      setPositions(data)
-      await fetchPrices(data)
+      setPositions(Array.isArray(data) ? data : [])
+      await fetchPrices(Array.isArray(data) ? data : [])
     } catch (error) {
-      console.error("Error fetching positions:", error)
+      setPositions([])
+      toast.error("Failed to load positions")
     } finally {
       setLoading(false)
     }
@@ -132,28 +150,42 @@ export default function HomePage() {
       setPrices(data.prices)
       setLastUpdate(new Date())
     } catch (error) {
-      console.error("Error fetching prices:", error)
+      toast.error("Failed to refresh prices")
     }
   }
 
   const fetchAccounts = async () => {
     try {
       const res = await fetch("/api/accounts")
+      if (!res.ok) {
+        setAccounts([])
+        if (res.status !== 401) {
+          toast.error("Failed to load accounts")
+        }
+        return
+      }
       const data = await res.json()
-      setAccounts(data)
+      setAccounts(Array.isArray(data) ? data : [])
     } catch (error) {
-      console.error("Error fetching accounts:", error)
+      setAccounts([])
+      toast.error("Failed to load accounts")
     }
   }
 
   const fetchSettings = async () => {
     try {
       const res = await fetch("/api/settings")
+      if (!res.ok) {
+        if (res.status !== 401) {
+          toast.error("Failed to load settings")
+        }
+        return
+      }
       const data = await res.json()
-      setPositionThreshold(data.positionThreshold)
+      setPositionThreshold(data.positionThreshold || 20)
       setTargetAllocations(data.targetAllocations || {})
     } catch (error) {
-      console.error("Error fetching settings:", error)
+      toast.error("Failed to load settings")
     }
   }
 
@@ -322,48 +354,67 @@ export default function HomePage() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          {/* Layout Toggle */}
-          <div className="hidden md:flex items-center border rounded-md p-1">
+        {userId && (
+          <div className="flex items-center gap-2">
+            {/* Layout Toggle */}
+            <div className="hidden md:flex items-center border rounded-md p-1">
+              <Button
+                variant={chartLayout === 'grid' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setChartLayout('grid')}
+                className="h-7 px-2"
+                title="4-column grid"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={chartLayout === 'rows' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setChartLayout('rows')}
+                className="h-7 px-2"
+                title="2-column rows"
+              >
+                <LayoutList className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={chartLayout === 'stack' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setChartLayout('stack')}
+                className="h-7 px-2"
+                title="Stacked"
+              >
+                <Square className="h-4 w-4" />
+              </Button>
+            </div>
             <Button
-              variant={chartLayout === 'grid' ? 'default' : 'ghost'}
+              onClick={handleRefresh}
+              disabled={refreshing}
+              variant="outline"
               size="sm"
-              onClick={() => setChartLayout('grid')}
-              className="h-7 px-2"
-              title="4-column grid"
             >
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={chartLayout === 'rows' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setChartLayout('rows')}
-              className="h-7 px-2"
-              title="2-column rows"
-            >
-              <LayoutList className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={chartLayout === 'stack' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setChartLayout('stack')}
-              className="h-7 px-2"
-              title="Stacked"
-            >
-              <Square className="h-4 w-4" />
+              <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+              {refreshing ? "Updating..." : "Refresh Prices"}
             </Button>
           </div>
-          <Button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            variant="outline"
-            size="sm"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-            {refreshing ? "Updating..." : "Refresh Prices"}
+        )}
+      </div>
+
+      {!isLoaded ? (
+        <Card>
+          <CardContent className="flex items-center justify-center py-12">
+            <p className="text-muted-foreground">Loading...</p>
+          </CardContent>
+        </Card>
+      ) : !userId ? (
+        // Redirect to landing page for unauthenticated users
+        <div className="text-center py-12">
+          <p className="text-muted-foreground mb-4">Redirecting to landing page...</p>
+          <Button onClick={() => window.location.href = "/landing"}>
+            Go to Landing Page
           </Button>
         </div>
-      </div>
+      ) : (
+        <>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -1165,6 +1216,8 @@ export default function HomePage() {
           )}
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   )
 }

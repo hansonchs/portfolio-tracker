@@ -1,16 +1,25 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
+import { auth } from "@clerk/nextjs/server"
 
 // GET /api/settings - Fetch user settings
 export async function GET() {
   try {
-    // Get or create default settings (there should only be one row)
-    let settings = await prisma.userSettings.findFirst()
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Get or create default settings for this user
+    let settings = await prisma.userSettings.findUnique({
+      where: { userId },
+    })
 
     if (!settings) {
       // Create default settings if none exist
       settings = await prisma.userSettings.create({
         data: {
+          userId,
           positionThreshold: 20, // Default 20%
           targetAllocations: "{}", // Empty JSON object
         },
@@ -38,14 +47,18 @@ export async function GET() {
 // POST /api/settings - Update user settings
 export async function POST(request: NextRequest) {
   try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     const body = await request.json()
     const { positionThreshold, targetAllocations } = body
 
-    console.log("POST settings received:", { positionThreshold, targetAllocations })
-
-    // Get or create settings
-    let settings = await prisma.userSettings.findFirst()
-    console.log("Existing settings:", settings)
+    // Get or create settings for this user
+    let settings = await prisma.userSettings.findUnique({
+      where: { userId },
+    })
 
     const updateData: any = {}
 
@@ -68,25 +81,22 @@ export async function POST(request: NextRequest) {
       updateData.targetAllocations = JSON.stringify(targetAllocations)
     }
 
-    console.log("Update data:", updateData)
-
     if (settings) {
       // Update existing
       settings = await prisma.userSettings.update({
-        where: { id: settings.id },
+        where: { userId },
         data: updateData,
       })
     } else {
       // Create new
       settings = await prisma.userSettings.create({
         data: {
+          userId,
           positionThreshold: updateData.positionThreshold ?? 20,
           targetAllocations: updateData.targetAllocations ?? "{}",
         },
       })
     }
-
-    console.log("Updated settings:", settings)
 
     // Parse targetAllocations for response
     let parsedTargets = {}

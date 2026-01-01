@@ -1,13 +1,14 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useAuth } from "@clerk/nextjs"
 import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
-import { ArrowLeft, PlusCircle, CheckCircle } from "lucide-react"
+import { ArrowLeft, PlusCircle, CheckCircle, LogIn } from "lucide-react"
 
 interface Account {
   id: string
@@ -16,6 +17,7 @@ interface Account {
 }
 
 export default function ManualPage() {
+  const { isLoaded, userId } = useAuth()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [positionForm, setPositionForm] = useState({
     ticker: "",
@@ -137,15 +139,36 @@ export default function ManualPage() {
         <h2 className="text-3xl font-bold">Add Position</h2>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Add Position Manually</CardTitle>
-          <CardDescription>
-            Add stock, option, or cash position
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+      {!isLoaded ? (
+        <Card>
+          <CardContent className="flex items-center justify-center py-12">
+            <p className="text-muted-foreground">Loading...</p>
+          </CardContent>
+        </Card>
+      ) : !userId ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
+            <LogIn className="h-12 w-12 text-muted-foreground" />
+            <h3 className="text-xl font-semibold">Sign In Required</h3>
+            <p className="text-muted-foreground text-center">
+              You need to sign in to add positions to your portfolio.
+            </p>
+            <Button onClick={() => window.location.href = "/sign-in"}>
+              <LogIn className="h-4 w-4 mr-2" />
+              Sign In
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Add Position Manually</CardTitle>
+            <CardDescription>
+              Add stock, option, or cash position
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="type">Type</Label>
@@ -320,6 +343,7 @@ export default function ManualPage() {
           </form>
         </CardContent>
       </Card>
+      )}
     </div>
   )
 }
