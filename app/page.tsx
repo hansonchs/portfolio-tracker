@@ -591,7 +591,7 @@ export default function HomePage() {
                   <Cell fill="#3b82f6" />
                 </Pie>
                 <Tooltip
-                  formatter={(value: number) => `HKD ${value.toLocaleString("zh-HK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                  formatter={(value: number | undefined) => value ? `HKD ${value.toLocaleString("zh-HK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -705,7 +705,7 @@ export default function HomePage() {
                   })()}
                 </Pie>
                 <Tooltip
-                  formatter={(value: number) => `HKD ${value.toLocaleString("zh-HK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                  formatter={(value: number | undefined) => value ? `HKD ${value.toLocaleString("zh-HK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -845,7 +845,7 @@ export default function HomePage() {
                   <Cell fill="#d946ef" />
                 </Pie>
                 <Tooltip
-                  formatter={(value: number) => `HKD ${value.toLocaleString("zh-HK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                  formatter={(value: number | undefined) => value ? `HKD ${value.toLocaleString("zh-HK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -942,7 +942,7 @@ export default function HomePage() {
                   })()}
                 </Pie>
                 <Tooltip
-                  formatter={(value: number) => `HKD ${value.toLocaleString("zh-HK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                  formatter={(value: number | undefined) => value ? `HKD ${value.toLocaleString("zh-HK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
                 />
               </PieChart>
             </ResponsiveContainer>

@@ -4,22 +4,16 @@ const prisma = new PrismaClient()
 
 async function main() {
   // Create the 3 broker accounts
-  const futu = await prisma.account.upsert({
-    where: { name: 'Futu' },
-    update: {},
-    create: { name: 'Futu', currency: 'HKD' },
+  const futu = await prisma.account.create({
+    data: { name: 'Futu', currency: 'HKD', userId: 'seed_user' },
   })
 
-  const webull = await prisma.account.upsert({
-    where: { name: 'WeBull' },
-    update: {},
-    create: { name: 'WeBull', currency: 'USD' },
+  const webull = await prisma.account.create({
+    data: { name: 'WeBull', currency: 'USD', userId: 'seed_user' },
   })
 
-  const tiger = await prisma.account.upsert({
-    where: { name: 'Tiger' },
-    update: {},
-    create: { name: 'Tiger', currency: 'USD' },
+  const tiger = await prisma.account.create({
+    data: { name: 'Tiger', currency: 'USD', userId: 'seed_user' },
   })
 
   console.log('Created accounts:', { futu, webull, tiger })

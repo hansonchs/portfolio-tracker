@@ -1,3 +1,5 @@
+"use client"
+
 import Link from "next/link"
 import { Home, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -12,12 +14,12 @@ export default function NotFound() {
           Sorry, we couldn't find the page you're looking for.
         </p>
         <div className="flex gap-4 justify-center">
-          <Button asChild>
-            <Link href="/" className="flex items-center gap-2">
+          <Link href="/">
+            <Button className="flex items-center gap-2">
               <Home className="h-4 w-4" />
               Go Home
-            </Link>
-          </Button>
+            </Button>
+          </Link>
           <Button variant="outline" onClick={() => window.history.back()}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Go Back

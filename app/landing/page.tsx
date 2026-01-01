@@ -84,11 +84,14 @@ export default function LandingPage() {
                   Get Started Free
                 </Button>
               </SignInButton>
-              <Button size="lg" variant="outline" className="text-lg px-8 py-6" asChild>
-                <a href="#features" className="flex items-center">
-                  Learn More
-                  <ArrowRight className="h-5 w-5 ml-2" />
-                </a>
+              <Button
+                size="lg"
+                variant="outline"
+                className="text-lg px-8 py-6"
+                onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
+              >
+                Learn More
+                <ArrowRight className="h-5 w-5 ml-2" />
               </Button>
             </div>
             <p className="text-sm text-muted-foreground">

@@ -14,6 +14,7 @@ interface Account {
   id: string
   name: string
   currency: string
+  cashBalance: number
 }
 
 export default function ManualPage() {
@@ -79,6 +80,10 @@ export default function ManualPage() {
 
         const currentCash = account?.cashBalance || 0
         const newCashBalance = currentCash + parseFloat(positionForm.cashAmount)
+
+        if (!account) {
+          throw new Error("Account not found")
+        }
 
         const res = await fetch("/api/accounts", {
           method: "PUT",
